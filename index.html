@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="./libs/d3.js"></script>
+    <script src="libs/d3jstopojson.v1.js"></script>
+    <title>MA Map</title>
+    <style>
+        #tooltip {
+            position: absolute;
+            opacity: 0;
+            top: 0;
+            left: 0;
+            width: auto;
+            padding: 10px;
+            background: white;
+            font-family: sans-serif;
+            font-size: medium;
+            border-radius: 2px;
+            line-height: 1;
+        }
+
+        path {
+            stroke-width: .5px;
+            stroke: black
+        }
+
+        path:hover {
+            opacity: .6;
+            stroke: black;
+            stroke-width: 4px;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .hide-boundary {
+            stroke: none;
+        }
+    </style>
+
+</head>
+
+<body>
+
+    <div id="tooltip"></div>
+    <div class="container">
+        <h1 style="text-align: center;">Choropleth Maps</h1>
+        <h3 style="text-align: center;">Sneha Holehonnur Sridhar</h3>
+        <h2>Population in 1980</h2>
+        <div class="fig1"></div>
+        <h2>Population change between 2010 and 2000 in each town</h2>
+        <div class="fig2"></div>
+        <h2>Color the map by County</h2>
+        <div class="fig3"></div>
+        <h2>Color Code the County by Gini Index</h2>
+        <div class="fig4"></div>
+    </div>
+
+    <script>
+        const window_dims = {
+            width: window.innerWidth,
+            height: window.innerHeight
+        };
+        const svgWidth = window_dims.width / 2;
+        const svgHeight = window_dims.width / 3;
+
+        const MA_counties = "./data/towns.topojson"
+        const gini_index = "./data/gini_index.csv"
+
+        Promise.all([
+            d3.json(MA_counties),
+            d3.csv(gini_index)
+        ]).then(data => {
+            // topology data
+            const topology_data = data[0];
+            // gini index data
+            const csv_data = data[1];
+
+            const generateMap1 = (topo_data, containerName, width, height, margin = 30) => {
+                const svg = d3.select(containerName).append("svg")
+                    .attr("width", width)
+                    .attr("height", height);
+
+                const geojson = topojson.feature(topo_data, topo_data.objects.ma);
+                const projections = [
+                    d3.geoAzimuthalEqualArea(), //Azimuthal projections project the sphere directly onto a plane.
+                    d3.geoAlbersUsa(), // USA conic projection
+                    d3.geoAlbers(), // equal-area conic projection
+                    d3.geoMercator(), // cylindrical projection
+                    d3.geoNaturalEarth1(), // pseudocylindrical projection designed by Tom Patterson
+                    d3.geoEqualEarth(), // Equal Earth projection, by Bojan Šavrič et al., 2018.
+                    d3.geoConicEqualArea(), //equal-area conic projection
+                    d3.geoEquirectangular(), //Cylindrical Projections
+                    d3.geoOrthographic()
+                ]
+
+                const geoPath_generator = d3.geoPath()
+                    .projection(projections[3].fitSize([width - margin, height - margin], geojson))
+
+                //https://colorbrewer2.org/#type=diverging&scheme=RdYlBu&n=6
+                const colorInterpolator = d3.interpolateRgbBasis(['#d73027', '#fc8d59', '#fee090', '#e0f3f8', '#91bfdb', '#4575b4'].reverse())
+                // if the data is scaled using log scale
+                const logScale = d3.scaleLog()
+                    .domain(d3.extent(geojson.features, (d) => {
+                        return d['properties']['POP1980']
+
+                    }))
+                // if the data is scaled using linear scale
+                const linearScale = d3.scaleLinear()
+                    .domain(d3.extent(geojson.features, (d) => {
+                        return d['properties']['POP1980']
+                    }))
+
+                const tooltip = d3.select("#tooltip");
+
+                svg.selectAll("path")
+                    .data(geojson.features)
+                    .enter()
+                    .append("path")
+                    .attr("d", d => geoPath_generator(d))
+                    .attr("fill", d => colorInterpolator(linearScale(d['properties']['POP1980'])))
+                    .on("mouseenter", (m, d) => {
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9)
+                        tooltip.html(d['properties']['TOWN'] + "<br>" + d['properties']['POP1980'])
+                            .style("left", m.clientX + "px")
+                            .style("top", m.clientY + "px");
+                    })
+                    .on("mousemove", (m, d) => {
+                        tooltip.style("opacity", .9)
+                    })
+                    .on("mouseout", (m, d) => {
+                        tooltip.transition()
+                            .duration(400)
+                            .style("opacity", 0)
+                    })
+
+            }
+
+            generateMap1(topology_data, ".fig1", svgWidth, svgHeight)
+
+            const generateMap2 = (topo_data, containerName, width, height, margin = 30) => {
+                const svg = d3.select(containerName).append("svg")
+                    .attr("width", width)
+                    .attr("height", height);
+
+                const geojson = topojson.feature(topo_data, topo_data.objects.ma);
+
+                const projections = [
+                    d3.geoAzimuthalEqualArea(), // Azimuthal projections project the sphere directly onto a plane.
+                    d3.geoAlbersUsa(), // USA conic projection
+                    d3.geoAlbers(), // equal-area conic projection
+                    d3.geoMercator(), // cylindrical projection
+                    d3.geoNaturalEarth1(), // pseudocylindrical projection designed by Tom Patterson
+                    d3.geoEqualEarth(), // Equal Earth projection, by Bojan Šavrič et al., 2018.
+                    d3.geoConicEqualArea(), // equal-area conic projection
+                    d3.geoEquirectangular(), // Cylindrical Projections
+                    d3.geoOrthographic()
+                ];
+
+                const geoPath_generator = d3.geoPath()
+                    .projection(projections[3].fitSize([width - margin, height - margin], geojson));
+
+                const colorInterpolator = d3.interpolateRdYlGn;
+                const populationChangeValues = geojson.features.map(d => d.properties.POPCH00_10);
+                const colorScale = d3.scaleSequential(colorInterpolator)
+                    .domain([d3.min(populationChangeValues), d3.max(populationChangeValues)]);
+
+                const tooltip = d3.select("#tooltip");
+
+                svg.selectAll("path")
+                    .data(geojson.features)
+                    .enter()
+                    .append("path")
+                    .attr("d", d => geoPath_generator(d))
+                    .attr("fill", d => colorScale(d.properties.POPCH00_10))
+                    .on("mouseenter", (event, d) => {
+                        tooltip.transition()
+                            .duration(200)
+                            .style("opacity", .9);
+                        tooltip.html(d['properties']['TOWN'] + "<br>Population Change: " + d.properties.POPCH00_10)
+                            .style("left", (event.clientX + 10) + "px")
+                            .style("top", (event.clientY + 500) + "px");
+                    })
+                    .on("mousemove", () => {
+                        tooltip.style("opacity", .9);
+                    })
+                    .on("mouseout", () => {
+                        tooltip.transition()
+                            .duration(400)
+                            .style("opacity", 0);
+                    });
+            };
+
+            generateMap2(topology_data, ".fig2", svgWidth, svgHeight);
+
+
+            const generateMap3 = (topo_data, csv_data, containerName, width, height, margin = 30) => {
+                const svg = d3.select(containerName).append("svg")
+                    .attr("width", width)
+                    .attr("height", height);
+
+                const townToCountyMap = new Map();
+                csv_data.forEach(d => {
+                    townToCountyMap.set(d['Geographic Area Name'], d['id']);
+                });
+                
+                const countyGeoJSON = {
+                    type: "FeatureCollection",
+                    features: []
+                };
+                console.log("topodata", topo_data.objects.ma.geometries)
+                topo_data.objects.ma.geometries.forEach(countyGeometry => {
+                    const countyFeature = topojson.feature(topo_data, countyGeometry);
+                    countyFeature.properties = {
+                        CountyCode: countyGeometry.properties.FIPS_STCO
+                    };
+                    countyGeoJSON.features.push(countyFeature);
+                });
+
+
+                console.log("countyGeoJSON", countyGeoJSON.features)
+
+                const customCountyColors = [
+                    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+                    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+                    "#aec7e8", "#ffbb78", "#98df8a", "#ff9896"
+                ];
+
+                const colorScale = d3.scaleOrdinal()
+                    .domain(Array.from(townToCountyMap.values())) // Use unique county values from the map
+                    .range(customCountyColors);
+
+                // Create a projection and geoPath generator
+                const projection = d3.geoMercator().fitSize([width - margin, height - margin], countyGeoJSON);
+                const geoPath_generator = d3.geoPath().projection(projection);
+
+                // Render the counties with color coding and tooltip
+                const tooltip = d3.select("#tooltip");
+
+                // Highlight function to change county fill color on hover
+                const highlightCounty = (countyCode, event) => {
+                    svg.selectAll("path")
+                        .filter(d => d.properties.CountyCode === countyCode)
+                        .attr("fill", "yellow"); // Change the fill color to yellow on hover
+
+                    // Display county name in the tooltip
+                    const countyName = getCountyNameFromCSV(countyCode);
+                    tooltip.transition()
+                        .duration(200)
+                        .style("opacity", 0.9);
+
+                    tooltip.html(`${countyName}<br> Id: ${countyCode}`)
+                        .style("left", (event.pageX + 10) + "px")
+                        .style("top", (event.pageY - 30) + "px");
+                };
+
+                // Reset function to revert county fill color on mouse leave
+                const resetCounty = () => {
+                    svg.selectAll("path").attr("fill", d => colorScale(d.properties.CountyCode));
+                    tooltip.transition()
+                        .duration(400)
+                        .style("opacity", 0);
+                };
+
+                // Function to get county name from CSV data
+                const getCountyNameFromCSV = (countyCode) => {
+                    // const countyEntry = csv_data.find(entry => entry.id.slice(-5) === countyCode);
+                    const countyEntry = csv_data.find(entry => entry.id.endsWith(countyCode));
+                    return countyEntry ? countyEntry["Geographic Area Name"].split(',')[0] : "Unknown County";
+                };
+
+                // Render the counties with color coding and tooltip
+                svg.selectAll("path")
+                    .data(countyGeoJSON.features)
+                    .enter()
+                    .append("path")
+                    .attr("d", d => geoPath_generator(d))
+                    .attr("fill", d => colorScale(d.properties.CountyCode))
+                    .style("stroke", "none")
+                    .style("stroke-width", "0px")
+                    .on("mouseenter", (event, d) => {
+                        highlightCounty(d.properties.CountyCode, event);
+                    })
+                    .on("mouseleave", () => {
+                        resetCounty();
+                    });
+            };
+
+            generateMap3(topology_data, csv_data, ".fig3", svgWidth, svgHeight);
+
+            const generateMap4 = (topo_data, csv_data, containerName, width, height, margin = 30) => {
+
+                const svg = d3.select(containerName).append("svg")
+                    .attr("width", width)
+                    .attr("height", height);
+
+                // Filter the data to get Gini Index values for the year 2017
+                const giniData2017 = csv_data.filter(d => d.year === "2017");
+                // console.log("Gini Data for 2017:", giniData2017);
+
+                // Create a mapping between county codes and their corresponding Gini Index
+                const countyToGiniMap = new Map();
+                giniData2017.forEach(d => {
+                    countyToGiniMap.set(+d['id'].slice(-5), +d["Estimate!!Gini Index"]);
+                });
+                // console.log("County to Gini Map", countyToGiniMap);
+
+                // Create a GeoJSON object for counties
+                const countyGeoJSON = {
+                    type: "FeatureCollection",
+                    features: []
+                };
+
+                // Iterate through the county boundaries in the topology data
+                topo_data.objects.ma.geometries.forEach(countyGeometry => {
+                    const countyFeature = topojson.feature(topo_data, countyGeometry);
+                    countyFeature.properties = {
+                        CountyCode: countyGeometry.properties.FIPS_STCO
+                    };
+                    countyGeoJSON.features.push(countyFeature);
+                });
+
+                // Get the minimum and maximum Gini Index values for the year 2017
+                const minGiniIndex = d3.min(Array.from(countyToGiniMap.values()) || [0]);
+                const maxGiniIndex = d3.max(Array.from(countyToGiniMap.values()) || [0]);
+
+                // Define a color scale for Gini Index
+                const colorScale = d3.scaleSequential(d3.interpolateViridis)
+                    .domain([minGiniIndex, maxGiniIndex]);
+
+                // Create a projection and geoPath generator
+                const projection = d3.geoMercator().fitSize([width - margin, height - margin], countyGeoJSON);
+                const geoPath_generator = d3.geoPath().projection(projection);
+
+                // Render the counties with color coding and tooltip
+                const tooltip = d3.select("#tooltip");
+
+                // Define a variable to store the original county colors
+                const originalColors = new Map();
+
+                // Highlight function to raise the county slightly and keep the same color on hover
+                const highlightCounty = (countyCode, event) => {
+                    svg.selectAll("path")
+                        .filter(d => d.properties.CountyCode === countyCode)
+                        .style("fill", d => colorScale(countyToGiniMap.get(d.properties.CountyCode)))
+                        .style("transform", "translateY(-5px)"); // Raise the county by 5 pixels on hover
+
+                    // Display county name and Gini Index in the tooltip
+                    const countyName = getCountyNameFromCSV(countyCode);
+                    const giniIndex = countyToGiniMap.get(countyCode);
+                    tooltip.transition()
+                        .duration(200)
+                        .style("opacity", 0.9);
+
+                    if (giniIndex !== undefined) {
+                        tooltip.html(`${countyName}<br>Gini Index (2017): ${giniIndex.toFixed(4)}`)
+                            .style("left", (event.pageX + 20) + "px")
+                            .style("top", (event.pageY - 30) + "px");
+                    } else {
+                        tooltip.html(`${countyName}<br>Gini Index (2017): Data not available`)
+                            .style("left", (event.pageX + 20) + "px")
+                            .style("top", (event.pageY - 30) + "px");
+                    }
+                };
+
+                // Reset function to revert the county to its original position and color on mouse leave
+                const resetCounty = () => {
+                    svg.selectAll("path")
+                        .style("fill", d => colorScale(countyToGiniMap.get(d.properties.CountyCode)))
+                        .style("transform", "translateY(0)"); // Reset the county's position
+
+                    tooltip.transition()
+                        .duration(400)
+                        .style("opacity", 0);
+                };
+                const getCountyNameFromCSV = (countyCode) => {
+                    const countyEntry = csv_data.find(entry => entry.id.endsWith(countyCode));
+                    return countyEntry ? countyEntry["Geographic Area Name"].split(',')[0] : "Unknown County";
+                };
+
+                // Render the counties with color coding and tooltip
+                svg.selectAll("path")
+                    .data(countyGeoJSON.features)
+                    .enter()
+                    .append("path")
+                    .attr("d", d => geoPath_generator(d))
+                    // .attr("fill", d => colorScale(countyToGiniMap.get(d.properties.CountyCode)))
+                    .attr("fill", d => {
+                        const countyCode = d.properties.CountyCode;
+                        const giniIndex = countyToGiniMap.get(countyCode);
+                        // console.log("Gini Index for County", countyCode, ":", giniIndex);
+                        return colorScale(giniIndex);
+                    })
+                    .style("stroke", "none")
+                    .style("stroke-width", "0px")
+                    .on("mouseenter", (event, d) => {
+                        highlightCounty(d.properties.CountyCode, event);
+                    })
+                    .on("mouseleave", () => {
+                        resetCounty();
+                    });
+            };
+
+            generateMap4(topology_data, csv_data, ".fig4", svgWidth, svgHeight);
+
+        });
+
+    </script>
+</body>
+
+</html>
